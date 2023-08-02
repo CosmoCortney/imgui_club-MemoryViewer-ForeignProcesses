@@ -39,6 +39,7 @@
 // - v0.43 (2021/03/12): added OptFooterExtraHeight to allow for custom drawing at the bottom of the editor [@leiradel]
 // - v0.44 (2021/03/12): use ImGuiInputTextFlags_AlwaysOverwrite in 1.82 + fix hardcoded width.
 // - v0.50 (2021/11/12): various fixes for recent dear imgui versions (fixed misuse of clipper, relying on SetKeyboardFocusHere() handling scrolling from 1.85). added default size.
+// - v0.50.1 (2023/08/02): made foreign process memory readable and manipulatable
 //
 // Todo/Bugs:
 // - This is generally old/crappy code, it should work but isn't very good.. to be rewritten some day.
@@ -50,6 +51,7 @@
 
 #include <stdio.h>      // sprintf, scanf
 #include <stdint.h>     // uint8_t, etc.
+#include<Windows.h>
 
 #ifdef _MSC_VER
 #define _PRISizeT   "I"
@@ -184,7 +186,8 @@ struct MemoryEditor
     }
 
     // Standalone Memory Editor window
-    void DrawWindow(const char* title, void* mem_data, size_t mem_size, size_t base_display_addr = 0x0000)
+    // If handle is 0, process-own memory data will be used. Otherwise a foreign processe's memory will be used
+    void DrawWindow(const char* title, void* mem_data, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr)
     {
         Sizes s;
         CalcSizes(s, mem_size, base_display_addr);
@@ -196,7 +199,7 @@ struct MemoryEditor
         {
             if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
                 ImGui::OpenPopup("context");
-            DrawContents(mem_data, mem_size, base_display_addr);
+            DrawContents(mem_data, mem_size, base_display_addr, handle, readAddress);
             if (ContentsWidthChanged)
             {
                 CalcSizes(s, mem_size, base_display_addr);
@@ -207,12 +210,19 @@ struct MemoryEditor
     }
 
     // Memory Editor contents only
-    void DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000)
+    // If handle is 0, process-own memory data will be used. Otherwise a foreign processe's memory will be used
+    void DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr)
     {
         if (Cols < 1)
             Cols = 1;
 
         ImU8* mem_data = (ImU8*)mem_data_void;
+
+        if(handle != 0)
+        {
+            ReadProcessMemory(handle, readAddress, mem_data_void, mem_size, nullptr);
+        }
+
         Sizes s;
         CalcSizes(s, mem_size, base_display_addr);
         ImGuiStyle& style = ImGui::GetStyle();
@@ -356,10 +366,19 @@ struct MemoryEditor
                         unsigned int data_input_value = 0;
                         if (data_write && sscanf(DataInputBuf, "%X", &data_input_value) == 1)
                         {
-                            if (WriteFn)
-                                WriteFn(mem_data, addr, (ImU8)data_input_value);
+                            if (handle != 0)
+                            {
+                                LPVOID writeAddress = (LPVOID)((char*)readAddress + addr);
+                                char writeVal = (char)data_input_value;
+                                WriteProcessMemory(handle, writeAddress, reinterpret_cast<LPCVOID>(&writeVal), 1, nullptr);
+                            }
                             else
-                                mem_data[addr] = (ImU8)data_input_value;
+                            {
+                                if (WriteFn)
+                                    WriteFn(mem_data, addr, (ImU8)data_input_value);
+                                else
+                                    mem_data[addr] = (ImU8)data_input_value;
+                            }
                         }
                         ImGui::PopID();
                     }
