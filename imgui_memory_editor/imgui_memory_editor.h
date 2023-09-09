@@ -65,7 +65,6 @@
 #pragma warning (push)
 #pragma warning (disable: 4996) // warning C4996: 'sprintf': This function or variable may be unsafe.
 #endif
-
 struct MemoryEditor
 {
     enum DataFormat
@@ -105,6 +104,59 @@ struct MemoryEditor
     size_t          HighlightMin, HighlightMax;
     int             PreviewEndianess;
     ImGuiDataType   PreviewDataType;
+
+    template<typename T> inline T swapBytes(const T val)
+    {
+        T temp = 0;
+        char buf;
+
+        for (int i = 0; i < sizeof(val); ++i)
+        {
+            buf = *((char*)(&val) + i);
+            *(reinterpret_cast<char*>(&temp) + sizeof(val) - (1 + i)) = buf;
+        }
+        return temp;
+    }
+
+    void rereorder4BytesReorderedMemory(void* ptr, const uint64_t size)
+    {
+        uint32_t* swapPtr = reinterpret_cast<uint32_t*>(ptr);
+
+        for (uint64_t offset = 0; offset < (size >> 2); ++offset)
+        {
+            swapPtr[offset] = Xertz::SwapBytes<uint32_t>(swapPtr[offset]);
+        }
+    }
+
+    template<typename addressType> inline addressType translatePtrTo4BytesReorderingPtr(addressType ptr)
+    {
+        uint64_t tempPtr;
+
+        if constexpr (std::is_same_v<uint64_t, addressType>)
+            tempPtr = ptr;
+        else
+            tempPtr = reinterpret_cast<uint64_t>(ptr);
+
+        switch (tempPtr & 0xF)
+        {
+        case 1: case 5: case 9: case 0xD:
+            ++tempPtr;
+            break;
+        case 2: case 6: case 0xA: case 0xE:
+            --tempPtr;
+            break;
+        case 3: case 7: case 0xB: case 0xF:
+            tempPtr -= 3;
+            break;
+        default: //0, 4, 8, C
+            tempPtr += 3;
+        }
+
+        if constexpr (std::is_same_v<uint64_t, addressType>)
+            return tempPtr;
+        else
+            return reinterpret_cast<addressType>(tempPtr);
+    }
 
     MemoryEditor()
     {
@@ -187,7 +239,7 @@ struct MemoryEditor
 
     // Standalone Memory Editor window
     // If handle is 0, process-own memory data will be used. Otherwise a foreign processe's memory will be used
-    void DrawWindow(const char* title, void* mem_data, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr)
+    void DrawWindow(const char* title, void* mem_data, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr, bool rereorder = false)
     {
         Sizes s;
         CalcSizes(s, mem_size, base_display_addr);
@@ -199,7 +251,7 @@ struct MemoryEditor
         {
             if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
                 ImGui::OpenPopup("context");
-            DrawContents(mem_data, mem_size, base_display_addr, handle, readAddress);
+            DrawContents(mem_data, mem_size, base_display_addr, handle, readAddress, rereorder);
             if (ContentsWidthChanged)
             {
                 CalcSizes(s, mem_size, base_display_addr);
@@ -211,7 +263,7 @@ struct MemoryEditor
 
     // Memory Editor contents only
     // If handle is 0, process-own memory data will be used. Otherwise a foreign processe's memory will be used
-    void DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr)
+    void DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr, bool rereorder = false)
     {
         if (Cols < 1)
             Cols = 1;
@@ -219,9 +271,10 @@ struct MemoryEditor
         ImU8* mem_data = (ImU8*)mem_data_void;
 
         if(handle != 0)
-        {
             ReadProcessMemory(handle, readAddress, mem_data_void, mem_size, nullptr);
-        }
+
+        if (rereorder)
+            rereorder4BytesReorderedMemory(mem_data, mem_size);
 
         Sizes s;
         CalcSizes(s, mem_size, base_display_addr);
@@ -369,6 +422,10 @@ struct MemoryEditor
                             if (handle != 0)
                             {
                                 LPVOID writeAddress = (LPVOID)((char*)readAddress + addr);
+
+                                if(rereorder)
+                                    writeAddress = translatePtrTo4BytesReorderingPtr<LPVOID>(writeAddress);
+
                                 char writeVal = (char)data_input_value;
                                 WriteProcessMemory(handle, writeAddress, reinterpret_cast<LPCVOID>(&writeVal), 1, nullptr);
                             }
