@@ -75,6 +75,12 @@ struct MemoryEditor
         DataFormat_COUNT
     };
 
+    enum MemoryViewerFlags
+    {
+        HIDE_OPTIONS = 1,
+        HIDE_ASCII = 1 << 1
+    };
+
     // Settings
     bool            Open;                                       // = true   // set to false when DrawWindow() was closed. ignore if not using DrawWindow().
     bool            ReadOnly;                                   // = false  // disable any editing.
@@ -263,7 +269,7 @@ struct MemoryEditor
 
     // Memory Editor contents only
     // If handle is 0, process-own memory data will be used. Otherwise a foreign processe's memory will be used
-    bool DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr, bool rereorder = false)
+    bool DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr, bool rereorder = false, int memoryViewerFlags = 0)
     {
         bool edited = false;
 
@@ -474,6 +480,7 @@ struct MemoryEditor
                     }
                 }
 
+                OptShowAscii = !(memoryViewerFlags & HIDE_ASCII);
                 if (OptShowAscii)
                 {
                     // Draw ASCII values
@@ -517,6 +524,9 @@ struct MemoryEditor
             DataEditingAddr = DataPreviewAddr = data_editing_addr_next;
             DataEditingTakeFocus = true;
         }
+
+        if (memoryViewerFlags & HIDE_OPTIONS)
+            return edited;
 
         const bool lock_show_data_preview = OptShowDataPreview;
         if (OptShowOptions)
