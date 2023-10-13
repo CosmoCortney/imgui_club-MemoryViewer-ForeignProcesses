@@ -263,8 +263,10 @@ struct MemoryEditor
 
     // Memory Editor contents only
     // If handle is 0, process-own memory data will be used. Otherwise a foreign processe's memory will be used
-    void DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr, bool rereorder = false)
+    bool DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr, bool rereorder = false)
     {
+        bool edited = false;
+
         if (Cols < 1)
             Cols = 1;
 
@@ -436,6 +438,8 @@ struct MemoryEditor
                                 else
                                     mem_data[addr] = (ImU8)data_input_value;
                             }
+
+                            edited = true;
                         }
                         ImGui::PopID();
                     }
@@ -526,6 +530,8 @@ struct MemoryEditor
             ImGui::Separator();
             DrawPreviewLine(s, mem_data, mem_size, base_display_addr);
         }
+
+        return edited;
     }
 
     void DrawOptionsLine(const Sizes& s, void* mem_data, size_t mem_size, size_t base_display_addr)
