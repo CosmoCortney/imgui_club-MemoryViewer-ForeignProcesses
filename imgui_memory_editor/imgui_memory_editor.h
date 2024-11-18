@@ -269,7 +269,7 @@ struct MemoryEditor
 
     // Memory Editor contents only
     // If handle is 0, process-own memory data will be used. Otherwise a foreign processe's memory will be used
-    bool DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr, bool rereorder = false, int memoryViewerFlags = 0)
+    bool DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000, HANDLE handle = 0, LPCVOID readAddress = nullptr, bool rereorder = false, int memoryViewerFlags = 0, uint64_t* outByteAddr = nullptr)
     {
         bool edited = false;
 
@@ -443,6 +443,9 @@ struct MemoryEditor
                                     WriteFn(mem_data, addr, (ImU8)data_input_value);
                                 else
                                     mem_data[addr] = (ImU8)data_input_value;
+
+                                if (outByteAddr != nullptr)
+                                    *outByteAddr = addr;
                             }
 
                             edited = true;
